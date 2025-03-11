@@ -1,1 +1,1387 @@
-print("Hello! This script was loaded successfully.")
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+if not Rayfield then
+    warn("Rayfield failed to load!")
+    return
+end
+
+local Window = Rayfield:CreateWindow({
+    Name = "Tens STFO Script",
+    LoadingTitle = "Thanks for buying ig",
+    LoadingSubtitle = "by tencell2. on discord",
+    Theme = "Default",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings = false,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = nil,
+        FileName = "Big Hub"
+    },
+    KeySystem = false,
+})
+
+local Tab = Window:CreateTab("⚔️combat", 7485051733)
+
+local reachConnection
+local autosnipeConnection
+local teleportDistance = 10
+local teleportWalkSpeed = 10
+local targetPlayer = nil
+local damageMultiplier = 1  -- Default damage multiplier
+
+-- Function to check if player is alive
+local function isPlayerAlive(player)
+    return player and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0
+end
+
+local function resetAutosnipe()
+    if autosnipeConnection then
+        autosnipeConnection:Disconnect()
+        autosnipeConnection = nil
+        targetPlayer = nil
+    end
+end
+
+-- Function to apply multiplied damage
+local function applyDamage(target)
+    if target and target:FindFirstChild("Humanoid") then
+        local humanoid = target.Humanoid
+        if humanoid.Health > 0 then
+            humanoid:TakeDamage(10 * damageMultiplier) -- Base damage 10, multiplied
+        end
+    end
+end
+
+-- Damage Multiplier Slider
+
+local damage = Tab:CreateSection("Damage")
+
+local Players = game:GetService("Players")
+local damageMultiplier = 1  -- Default multiplier value
+local damageMultiplierEnabled = false  -- Toggle state for enabling/disabling the multiplier
+local hitCounter = 0  -- Counter to track the hits
+local safeZones = {}  -- Add references to safe zone parts here
+
+-- Slider to set the damage multiplier
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+-- Ensure the RemoteEvent exists
+local ApplyDamageEvent = ReplicatedStorage:FindFirstChild("ApplyDamageEvent")
+if not ApplyDamageEvent then
+    ApplyDamageEvent = Instance.new("RemoteEvent")
+    ApplyDamageEvent.Name = "ApplyDamageEvent"
+    ApplyDamageEvent.Parent = ReplicatedStorage
+end
+
+local DamageSlider = Tab:CreateSlider({
+    Name = "Damage Multiplier",
+    Range = {1, 5},  
+    Increment = 0.1,
+    Suffix = "x",
+    CurrentValue = 1,
+    Flag = "DamageMultiplier",
+    Callback = function(Value)
+        damageMultiplier = Value  -- Update the multiplier value
+    end,
+})
+
+-- Function to check if a player is in a safe zone
+local function isInSafeZone(player)
+    if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = player.Character.HumanoidRootPart
+        for _, zone in ipairs(safeZones) do
+            if (hrp.Position - zone.Position).Magnitude < zone.Size.Magnitude / 2 then
+                return true  -- Player is inside a safe zone
+            end
+        end
+    end
+    return false
+end
+
+-- Function to apply damage multiplier safely
+local function applyDamage(target)
+    if damageMultiplierEnabled and target and target:FindFirstChild("Humanoid") then
+        local humanoid = target.Humanoid
+        local player = Players:GetPlayerFromCharacter(target)
+
+        -- Ensure target is not in a safe zone before applying damage
+        if isInSafeZone(player) then
+            print("Target is in a safe zone. Damage not applied.")
+            return
+        end
+
+        if humanoid.Health > 0 then
+            hitCounter = hitCounter + 1  -- Increment the hit counter
+            
+            -- Apply damage multiplier only on even hits to reduce spam
+            if hitCounter % 2 == 0 then
+                local newDamage = 10 * damageMultiplier  -- Base damage 10, multiplied
+                print("Requesting server to apply damage:", newDamage)
+
+                -- Send the damage request to the server
+                ApplyDamageEvent:FireServer(target, newDamage)
+            else
+                print("No Damage Multiplier on this hit.")
+            end
+        end
+    else
+        print("Damage Multiplier is Disabled.")
+    end
+end
+
+-- Toggle to enable/disable damage multiplier
+local DamageToggle = Tab:CreateToggle({
+    Name = "Enable Damage Multiplier",
+    CurrentValue = false,
+    Flag = "ToggleDamageMultiplier",
+    Callback = function(Value)
+        damageMultiplierEnabled = Value  -- Update toggle state
+        if not damageMultiplierEnabled then
+            hitCounter = 0  -- Reset hit counter when toggled off
+        end
+    end,
+})
+
+-- Server-side script (place this in ServerScriptService)
+if not game:GetService("ServerScriptService"):FindFirstChild("DamageHandler") then
+    local serverScript = Instance.new("Script")
+    serverScript.Name = "DamageHandler"
+    serverScript.Parent = game:GetService("ServerScriptService")
+
+    serverScript.Source = [[
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+        local ApplyDamageEvent = ReplicatedStorage:FindFirstChild("ApplyDamageEvent")
+        if not ApplyDamageEvent then
+            ApplyDamageEvent = Instance.new("RemoteEvent")
+            ApplyDamageEvent.Name = "ApplyDamageEvent"
+            ApplyDamageEvent.Parent = ReplicatedStorage
+        end
+
+        ApplyDamageEvent.OnServerEvent:Connect(function(player, target, damage)
+            if target and target:FindFirstChild("Humanoid") then
+                local humanoid = target.Humanoid
+                humanoid:TakeDamage(damage)
+                print(player.Name .. " applied " .. damage .. " damage to " .. target.Name)
+            end
+        end)
+    ]]
+end
+
+
+local reachsection = Tab:CreateSection("Reach")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local reachEnabled = false
+local reachStuds = 20 -- Increase the range to 20 studs
+local reachThread
+local visualizerSphere
+local visualizerEnabled = false
+local damageMultiplier = 4 -- Increased damage multiplier to 4x
+
+-- Function to check if a player is in the Terrain (SafeZone)
+local function isInSafeZone(player)
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return false end
+    return player.Character:IsDescendantOf(workspace.Terrain)
+end
+
+-- Function to handle Visualizer creation and removal
+local function createVisualizer()
+    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+    if not tool then return end 
+    
+    local handle = tool:FindFirstChild("Handle")
+    if not handle then return end 
+
+    -- Create a transparent sphere around the handle
+    visualizerSphere = Instance.new("Part")
+    visualizerSphere.Shape = Enum.PartType.Ball
+    visualizerSphere.Size = Vector3.new(4, 4, 4)
+    visualizerSphere.Transparency = 0.5
+    visualizerSphere.Color = Color3.fromRGB(173, 216, 230)
+    visualizerSphere.Anchored = false
+    visualizerSphere.CanCollide = false
+    visualizerSphere.Massless = true
+    visualizerSphere.Parent = workspace
+
+    -- Attach it to the handle with a WeldConstraint
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = handle
+    weld.Part1 = visualizerSphere
+    weld.Parent = visualizerSphere
+end
+
+-- Function to handle player death and respawn
+LocalPlayer.CharacterAdded:Connect(function(character)
+    -- Wait until the character fully loads
+    character:WaitForChild("HumanoidRootPart")
+    
+    if visualizerEnabled then
+        local function checkForTool()
+            local tool = character:FindFirstChildOfClass("Tool")
+            if tool then
+                createVisualizer()
+            end
+        end
+
+        -- Check immediately if the tool is already equipped
+        checkForTool()
+
+        -- Detect when a tool is equipped
+        character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                createVisualizer()
+            end
+        end)
+    end
+end)
+
+-- Function to handle "Visualizer" Toggle
+local VisuallizerToggle = Tab:CreateToggle({
+    Name = "Visualizer",
+    CurrentValue = false,
+    Flag = "VisualizerToggle",
+    Callback = function(Value)
+        visualizerEnabled = Value
+        if visualizerEnabled then
+            local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+            if tool then
+                createVisualizer()
+            end
+        else
+            if visualizerSphere then
+                visualizerSphere:Destroy()
+                visualizerSphere = nil
+            end
+        end
+    end,
+})
+
+-- Function to get valid targets for Reach
+local function getTargets()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return {} end
+
+    local hrp = char.HumanoidRootPart
+    local targets = {}
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyHrp = player.Character.HumanoidRootPart
+            local distance = (enemyHrp.Position - hrp.Position).Magnitude
+
+            -- Extended reach to 25 studs for larger range
+            if distance <= (reachStuds + 5) and not isInSafeZone(player) then
+                table.insert(targets, player.Character)
+            end
+        end
+    end
+    return targets
+end
+
+-- Function to damage enemies for Reach
+local function attackTargets()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool then return end 
+
+    for _, enemy in pairs(getTargets()) do
+        local humanoid = enemy:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            -- Increased damage to 4x the base damage
+            humanoid:TakeDamage(30 * damageMultiplier) -- Apply 4x damage
+        end
+    end
+end
+
+-- Main loop for reach with reduced delay for faster attacks
+function startReach()
+    if reachThread then return end
+    reachThread = task.spawn(function()
+        while reachEnabled do
+            attackTargets()
+            wait(0.1) -- Reduced wait time for more frequent attacks
+        end
+    end)
+end
+
+function stopReach()
+    reachEnabled = false
+    if reachThread then
+        task.cancel(reachThread)
+        reachThread = nil
+    end
+end
+
+-- Reach Toggle UI
+local ReachToggle = Tab:CreateToggle({
+    Name = "Reach",
+    CurrentValue = false,
+    Flag = "ReachToggle",
+    Callback = function(Value)
+        reachEnabled = Value
+        if reachEnabled then
+            startReach()
+        else
+            stopReach()
+        end
+    end,
+})
+
+-- Reach Slider UI
+local ReachSlider = Tab:CreateSlider({
+    Name = "Reach Distance",
+    Range = {5, 20}, -- UI shows max 20
+    Increment = 1,
+    Suffix = "Studs",
+    CurrentValue = 20, -- Set the default to max range (20 studs)
+    Flag = "ReachSlider",
+    Callback = function(Value)
+        reachStuds = math.min(Value, 20) -- UI max is 20, actual reach is also 20
+    end,
+})
+
+local Toggle
+local runningConnections = {} -- Stores active connections for cleanup
+local screenGui -- Store reference to the UI for cleanup
+local currentlyHighlightedPlayer = nil -- Ensure this is defined
+
+local clicktosnipe = Tab:CreateSection("Snipe")
+
+Toggle = Tab:CreateToggle({
+    Name = "Click to snipe",
+    CurrentValue = false,
+    Flag = "toggleig",
+    Callback = function(Value)
+        if not Value then
+            -- Cleanup everything when toggled OFF
+            for _, conn in ipairs(runningConnections) do
+                if conn then
+                    conn:Disconnect()
+                end
+            end
+            runningConnections = {}
+
+            -- Remove GUI
+            if screenGui then
+                screenGui:Destroy()
+                screenGui = nil
+            end
+
+            -- Remove highlight
+            if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                for _, part in ipairs(currentlyHighlightedPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        local highlight = part:FindFirstChild("PlayerHighlight")
+                        if highlight then
+                            highlight:Destroy()
+                        end
+                    end
+                end
+            end
+
+            currentlyHighlightedPlayer = nil
+            return
+        end
+
+        -- Services
+        local Players = game:GetService("Players")
+        local UserInputService = game:GetService("UserInputService")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local Camera = workspace.CurrentCamera
+
+        -- Variables
+        local maxRadius = 75
+        local teleporting = false
+        local isSpectating = false
+        local spectatedPlayer = nil
+        local spectateConnection = nil
+
+        -- Function to stop spectating
+        local function stopSpectating()
+            if isSpectating then
+                isSpectating = false
+                if spectateConnection then
+                    spectateConnection:Disconnect()
+                    spectateConnection = nil
+                end
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                    Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                end
+                spectatedPlayer = nil
+            end
+        end
+
+        -- Function to teleport to player
+        local function teleportToPlayer(player)
+            if teleporting or not player or not player.Character then return end
+            local targetPart = player.Character:FindFirstChild("HumanoidRootPart")
+            if not targetPart then return end
+
+            local localHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not localHRP then return end
+
+            if (localHRP.Position - targetPart.Position).Magnitude > maxRadius then return end
+
+            teleporting = true
+            local connection
+            connection = RunService.RenderStepped:Connect(function()
+                if targetPart and targetPart.Parent and localHRP then
+                    localHRP.CFrame = targetPart.CFrame
+                end
+            end)
+
+            task.delay(0.267, function()
+                if connection then
+                    connection:Disconnect()
+                end
+                teleporting = false
+            end)
+
+            table.insert(runningConnections, connection)
+        end
+
+        -- Create UI
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "TeleportGui"
+        screenGui.ResetOnSpawn = false
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+        local function createButton(name, text, pos, callback)
+            local button = Instance.new("TextButton")
+            button.Name = name
+            button.Text = text
+            button.Size = UDim2.new(0, 50, 0, 50)
+            button.Position = pos
+            button.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+            button.TextColor3 = Color3.new(1, 1, 1)
+            button.Font = Enum.Font.SourceSansBold
+            button.TextScaled = true
+            button.Parent = screenGui
+            button.MouseButton1Click:Connect(callback)
+            return button
+        end
+
+        -- Teleport button
+        createButton("TeleportButton", "V", UDim2.new(0, 10, 0.5, -25), function()
+            if currentlyHighlightedPlayer then
+                teleportToPlayer(currentlyHighlightedPlayer)
+            end
+        end)
+
+        -- Spectate button
+        createButton("SpectateButton", "B", UDim2.new(0, 70, 0.5, -25), function()
+            if isSpectating then
+                stopSpectating()
+            elseif currentlyHighlightedPlayer then
+                local targetCharacter = currentlyHighlightedPlayer.Character
+                local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    isSpectating = true
+                    spectatedPlayer = currentlyHighlightedPlayer
+                    Camera.CameraSubject = humanoid
+                end
+            end
+        end)
+
+        -- Detect player clicks
+        local function getClickedPlayer()
+            local mouse = LocalPlayer:GetMouse()
+            local target = mouse.Target
+            if target and target.Parent then
+                local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+                if targetPlayer and targetPlayer ~= LocalPlayer then
+                    return targetPlayer
+                end
+            end
+            return nil
+        end
+
+        -- Highlight player when clicked
+        local function highlightPlayer(player)
+            if not player or not player.Character then return end
+
+            -- Clear previous highlight
+            if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                for _, part in ipairs(currentlyHighlightedPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        local highlight = part:FindFirstChild("PlayerHighlight")
+                        if highlight then
+                            highlight:Destroy()
+                        end
+                    end
+                end
+            end
+
+            -- Highlight new player
+            for _, part in ipairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local selectionBox = Instance.new("SelectionBox")
+                    selectionBox.Adornee = part
+                    selectionBox.Color3 = Color3.new(1, 0, 0)
+                    selectionBox.LineThickness = 0.05
+                    selectionBox.Name = "PlayerHighlight"
+                    selectionBox.Parent = part
+                end
+            end
+
+            currentlyHighlightedPlayer = player
+        end
+
+        -- Handle Mouse Click to select a player
+        local mouseClickConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local tappedPlayer = getClickedPlayer()
+                if tappedPlayer then
+                    highlightPlayer(tappedPlayer)
+                end
+            end
+        end)
+        table.insert(runningConnections, mouseClickConnection)
+
+        -- Keyboard Event Handling for "V" and "B"
+        local inputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                if input.KeyCode == Enum.KeyCode.V and currentlyHighlightedPlayer then
+                    teleportToPlayer(currentlyHighlightedPlayer)
+                elseif input.KeyCode == Enum.KeyCode.B then
+                    if isSpectating then
+                        stopSpectating()
+                    elseif currentlyHighlightedPlayer then
+                        local targetCharacter = currentlyHighlightedPlayer.Character
+                        local humanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+                        if humanoid and humanoid.Health > 0 then
+                            isSpectating = true
+                            spectatedPlayer = currentlyHighlightedPlayer
+                            Camera.CameraSubject = humanoid
+                        end
+                    end
+                end
+            end
+        end)
+        table.insert(runningConnections, inputBeganConnection)
+    end
+})
+
+
+local Tab = Window:CreateTab("Character", 4483362458)
+
+local tpWalkConnection
+
+-- ✅ Corrected Section Creation
+local TPwalkbot = Tab:CreateSection("🤖Spinbot, tp walk")  
+
+local TpWalkConnection
+local normalSpeed = 16  -- Default walking speed
+local targetSpeed = 16  -- Starting target speed (16 studs by default)
+local maxSpeed = 50  -- Max speed for the TP walk
+local speedMultiplier = 1  -- Speed multiplier based on selected value
+local randomness = 0.03  -- Randomness for smooth movement
+
+-- UI Toggle for Tp Walk
+local Toggle = Tab:CreateToggle({
+    Name = "Tp Walk",
+    CurrentValue = false,
+    Flag = "Toggle2",
+    SectionParent = MovementSection, -- ✅ Assigning to the section
+    Callback = function(Value)
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local runService = game:GetService("RunService")
+
+        if Value then
+            if TpWalkConnection then TpWalkConnection:Disconnect() end
+
+            TpWalkConnection = runService.Heartbeat:Connect(function(deltaTime)
+                if humanoid and humanoidRootPart and humanoid.MoveDirection.Magnitude > 0 then
+                    local moveDirection = humanoid.MoveDirection.Unit
+                    local extraDistance = (speedMultiplier - 1) * (normalSpeed * deltaTime)
+                    local maxMove = maxSpeed * deltaTime
+                    extraDistance = math.min(extraDistance, maxMove)
+                    local randomOffset = Vector3.new(math.random() * randomness, 0, math.random() * randomness)
+                    humanoidRootPart.CFrame = humanoidRootPart.CFrame + (moveDirection * extraDistance) + randomOffset
+                end
+            end)
+        else
+            if TpWalkConnection then
+                TpWalkConnection:Disconnect()
+                TpWalkConnection = nil
+            end
+        end
+    end,
+})
+
+-- Slider for Speed Adjustment (Increase by increments of 3)
+local SpeedSlider = Tab:CreateSlider({
+    Name = "Speed",
+    Range = {normalSpeed, 16 + 3 * 5},  -- Slider range from normalSpeed to max (Normal + increments of 3 for 5 levels)
+    Increment = 3,  -- Increase by 3 per step
+    Suffix = "Speed",
+    CurrentValue = normalSpeed,  -- Start at normal speed (16)
+    Flag = "SpeedSlider",
+    Callback = function(Value)
+        targetSpeed = Value
+        speedMultiplier = math.min(targetSpeed, maxSpeed) / normalSpeed  -- Adjust speed multiplier based on the selected value
+    end,
+})
+
+-- Reset connection on character respawn
+game.Players.LocalPlayer.CharacterAdded:Connect(function()
+    if TpWalkConnection then
+        TpWalkConnection:Disconnect()
+        TpWalkConnection = nil
+    end
+end)
+
+local spinConnection
+
+local NewToggle = Tab:CreateToggle({
+   Name = "Spin Bot",
+   CurrentValue = false,
+   Flag = "NewToggle",
+   SectionParent = MovementSection, -- ✅ Assigning to the section
+   Callback = function(Value)
+       local player = game.Players.LocalPlayer
+       local character = player.Character or player.CharacterAdded:Wait()
+       local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+       local runService = game:GetService("RunService")
+       
+       if Value then
+           if spinConnection then spinConnection:Disconnect() end  
+           
+           spinConnection = runService.RenderStepped:Connect(function()
+               if humanoidRootPart then
+                   humanoidRootPart.CFrame = humanoidRootPart.CFrame * CFrame.Angles(0, math.rad(50), 0)
+               end
+           end)
+       else
+           if spinConnection then 
+               spinConnection:Disconnect()
+               spinConnection = nil
+           end
+       end
+   end,
+})
+
+local Sodasection = Tab:CreateSection("🥤soda")  
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local teleportEnabled = false  
+local sodaDistance = 50  -- Max value shown in UI
+local actualMaxDistance = 30  -- Real max distance to avoid detection
+local sodaTPThread  
+local firstTeleport = true  -- Flag to track if it's the first teleport
+
+-- UI Toggle & Slider
+local SodaTPToggle = Tab:CreateToggle({
+    Name = "Soda TP",
+    CurrentValue = false,
+    Flag = "SodaTP",
+    Callback = function(Value)
+        teleportEnabled = Value
+        if teleportEnabled then
+            startSodaTP()
+        else
+            stopSodaTP()
+        end
+    end,
+})
+
+local SodaDistanceSlider = Tab:CreateSlider({
+    Name = "Soda TP Range",
+    Range = {10, 50}, -- Shows 50 max, but internally caps at 30
+    Increment = 1,
+    Suffix = "Studs",
+    CurrentValue = 50,
+    Flag = "SodaTPRange",
+    Callback = function(Value)
+        sodaDistance = math.min(Value, actualMaxDistance) -- Caps at 30 studs internally
+    end,
+})
+
+local function getClosestSoda()
+    local closestSoda = nil
+    local shortestDistance = sodaDistance
+
+    for _, obj in pairs(workspace.Terrain:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Body") then
+            local sodaPos = obj.Body.Position
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local playerPos = char.HumanoidRootPart.Position
+                local distance = (sodaPos - playerPos).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    closestSoda = obj.Body
+                end
+            end
+        end
+    end
+    return closestSoda
+end
+
+-- Function to teleport instantly, with a very slight delay to avoid anti-cheat
+local function instantTeleport(target)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        local targetPos = target.Position + Vector3.new(0, 2, 0)  -- Slightly above to avoid clipping
+        local distance = (targetPos - hrp.Position).Magnitude
+
+        -- Only teleport if within max distance
+        if distance <= actualMaxDistance then
+            -- If this is the first teleport, wait 2 seconds before teleporting
+            if firstTeleport then
+                wait(2)  -- Wait 2 seconds before the first teleport
+                firstTeleport = false  -- After the first teleport, set the flag to false
+            else
+                wait(0.8)  -- Add a shorter delay for subsequent teleports (0.8 seconds)
+            end
+
+            -- Teleport to the target position
+            hrp.CFrame = CFrame.new(targetPos)
+        end
+    end
+end
+
+function startSodaTP()
+    if sodaTPThread then return end  
+    sodaTPThread = task.spawn(function()
+        while teleportEnabled do
+            local soda = getClosestSoda()
+            if soda then
+                instantTeleport(soda)  -- Instant teleport to the soda
+            end
+            wait(0.3)  -- Add a small delay to avoid excessive strain and prevent anti-cheat triggers
+        end
+    end)
+end
+
+function stopSodaTP()
+    teleportEnabled = false
+    firstTeleport = true  -- Reset the firstTeleport flag when stopping the script
+    if sodaTPThread then
+        task.cancel(sodaTPThread)  
+        sodaTPThread = nil
+    end
+end
+
+local RunService = game:GetService("RunService")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local shakeEnabled = false
+local shakeThread
+
+-- Function to make the character shake smoothly with gradual left-right turns
+local function startShake()
+    if shakeThread then return end
+    shakeThread = task.spawn(function()
+        local angle = 0
+        local direction = 1  -- Starts moving to the right
+        local maxAngle = math.rad(30)  -- Max angle for left-right movement
+        while shakeEnabled do
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+
+                -- Smooth turn to the left or right based on the direction
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, direction * math.rad(10), 0)  -- Increased rotation to make it faster
+
+                -- If it reaches the max angle (either left or right), reverse direction
+                angle = angle + direction * math.rad(10)  -- Increased rotation to make it faster
+                if math.abs(angle) >= maxAngle then
+                    direction = -direction
+                end
+            end
+            -- Wait for the next frame for smoothness
+            task.wait(0.05)  -- Slightly shorter wait time for a bit faster speed
+        end
+    end)
+end
+
+-- Function to completely stop the shake
+local function breakScript()
+    shakeEnabled = false
+    if shakeThread then
+        task.cancel(shakeThread)
+        shakeThread = nil
+    end
+end
+
+-- Keep shaking even after death
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1) -- Wait for respawn
+    if shakeEnabled then
+        startShake()
+    end
+end)
+
+-- Rayfield Toggle for Shaking
+local toggle6 = Tab:CreateToggle({
+    Name = "Shake",  -- Name of the toggle
+    CurrentValue = false,  -- Initial value of the toggle (off)
+    Flag = "Shake",  -- A unique flag for the toggle
+    Callback = function(Value)
+        shakeEnabled = Value
+        if shakeEnabled then
+            startShake()
+        else
+            breakScript() -- Fully breaks the script
+        end
+    end
+})
+
+local MovementSection = Tab:CreateSection("👀Staring") 
+
+
+
+local stareConnection
+local stareDistance = 50 -- Default staring distance
+
+-- Slider to set the staring range
+local StareSlider = Tab:CreateSlider({
+    Name = "Staring Distance",
+    Range = {30, 100},  
+    Increment = 1,
+    Suffix = " Studs",
+    CurrentValue = 50,
+    Flag = "StareDistance",
+    Callback = function(Value)
+        stareDistance = Value -- Update the staring distance
+    end,
+})
+
+local toggle6 = Tab:CreateToggle({
+    Name = "Staring",
+    CurrentValue = false,
+    Flag = "StareToggle",
+    Callback = function(Value)
+        if Value then
+            local player = game.Players.LocalPlayer
+            local character = player.Character or player.CharacterAdded:Wait()
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            local runService = game:GetService("RunService")
+            local players = game:GetService("Players")
+
+            if stareConnection then
+                stareConnection:Disconnect()
+                stareConnection = nil
+            end
+
+            stareConnection = runService.RenderStepped:Connect(function()
+                if humanoidRootPart then
+                    local closestPlayer = nil
+                    local closestDistance = stareDistance
+
+                    for _, otherPlayer in pairs(players:GetPlayers()) do
+                        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                            local otherHRP = otherPlayer.Character.HumanoidRootPart
+                            local distance = (humanoidRootPart.Position - otherHRP.Position).Magnitude
+
+                            if distance <= closestDistance then
+                                closestDistance = distance
+                                closestPlayer = otherHRP
+                            end
+                        end
+                    end
+
+                    if closestPlayer then
+                        -- Get current Y position to prevent jumping glitches
+                        local currentY = humanoidRootPart.Position.Y
+                        -- Make the character look at the closest player without messing up movement
+                        local lookAtPosition = Vector3.new(closestPlayer.Position.X, currentY, closestPlayer.Position.Z)
+                        humanoidRootPart.CFrame = CFrame.lookAt(humanoidRootPart.Position, lookAtPosition)
+                    end
+                end
+            end)
+        else
+            -- When toggled OFF, stop the loop completely
+            if stareConnection then
+                stareConnection:Disconnect()
+                stareConnection = nil
+            end
+        end
+    end,
+})
+
+local Height = Tab:CreateSection("Height")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local heightEnabled = false
+local heightStuds = 0
+local heightThread
+
+-- UI Toggle
+local HeightToggle = Tab:CreateToggle({
+    Name = "Height",
+    CurrentValue = false,
+    Flag = "HeightToggle",
+    Callback = function(Value)
+        heightEnabled = Value
+        if heightEnabled then
+            startHeightAdjustment()
+        else
+            stopHeightAdjustment()
+        end
+    end,
+})
+
+-- UI Slider
+local HeightSlider = Tab:CreateSlider({
+    Name = "Height Adjustment",
+    Range = {0, 10}, -- Max height is 10 studs
+    Increment = 1,
+    Suffix = "Studs",
+    CurrentValue = 0,
+    Flag = "HeightSlider",
+    Callback = function(Value)
+        heightStuds = Value
+    end,
+})
+
+local function maintainHeight()
+    while heightEnabled do
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+            local hrp = char.HumanoidRootPart
+            local humanoid = char.Humanoid
+
+            -- Ensure character is walking normally, but at a higher position
+            humanoid.HipHeight = heightStuds
+        end
+        wait(0.1) -- Small delay to prevent jittering
+    end
+end
+
+function startHeightAdjustment()
+    if heightThread then return end  
+    heightThread = task.spawn(maintainHeight)
+end
+
+function stopHeightAdjustment()
+    heightEnabled = false
+    if heightThread then
+        task.cancel(heightThread)  
+        heightThread = nil
+    end
+
+    -- Reset player height to normal
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        char.Humanoid.HipHeight = 0
+    end
+end
+
+
+local Tab = Window:CreateTab("Visuals", 4483362458) -- Title, Image
+
+local Section = Tab:CreateSection("ESP")
+
+local boxes = {}  -- Table to store boxes for each player
+local connections = {}  -- Table to store connections for updating box positions
+
+local Toggle = Tab:CreateToggle({
+   Name = "PlayerESP",  -- Toggle name
+   CurrentValue = false,  -- Default state of the toggle (off)
+   Flag = "ShowBoxToggle", -- A flag for configuration saving
+   Callback = function(Value)
+      -- When the toggle is enabled or disabled, we handle showing/hiding the blue box
+      if Value then
+         -- When the toggle is enabled, create a blue box around players
+         for _, player in pairs(game.Players:GetPlayers()) do
+            -- Create a box for the player if it doesn't exist already
+            if player.Character and not boxes[player] then
+               -- Create the blue box
+               local character = player.Character
+               local box = Instance.new("Part")
+               box.Parent = character  -- Parent the box to the player
+               box.Size = Vector3.new(5, 10, 5)  -- Size of the box (adjust as needed)
+               box.Position = character:WaitForChild("HumanoidRootPart").Position  -- Position at player's position
+               box.Anchored = true  -- Keep the box in place
+               box.CanCollide = false  -- Don't allow collisions
+               box.BrickColor = BrickColor.Blue()  -- Blue box color
+               box.Transparency = 0.8  -- Make the box more transparent (increased from 0.5)
+
+               -- Store the box in the table
+               boxes[player] = box
+
+               -- Update the box position every frame to follow the player
+               local connection
+               connection = game:GetService("RunService").Heartbeat:Connect(function()
+                  if character and character:FindFirstChild("HumanoidRootPart") then
+                     box.Position = character.HumanoidRootPart.Position
+                  end
+               end)
+
+               -- Store the connection in the table to disconnect later
+               connections[player] = connection
+            end
+         end
+      else
+         -- When the toggle is disabled, remove all boxes and connections
+         for player, box in pairs(boxes) do
+            if box then
+               box:Destroy()  -- Remove the blue box
+            end
+         end
+         for player, connection in pairs(connections) do
+            if connection then
+               connection:Disconnect()  -- Disconnect the position update
+            end
+         end
+         -- Clear the boxes and connections tables
+         boxes = {}
+         connections = {}
+      end
+   end,
+})
+
+-- When a player resets, make sure the box is recreated
+game.Players.PlayerAdded:Connect(function(player)
+   player.CharacterAdded:Connect(function(character)
+      -- Recreate the box when the player respawns
+      if Toggle.CurrentValue then  -- Only if the toggle is on
+         local box = Instance.new("Part")
+         box.Parent = character
+         box.Size = Vector3.new(5, 10, 5)  -- Size of the box (adjust as needed)
+         box.Position = character:WaitForChild("HumanoidRootPart").Position
+         box.Anchored = true
+         box.CanCollide = false
+         box.BrickColor = BrickColor.Blue()
+         box.Transparency = 0.8  -- More transparent
+
+         -- Store the box in the table
+         boxes[player] = box
+
+         -- Update the box position every frame to follow the player
+         local connection
+         connection = game:GetService("RunService").Heartbeat:Connect(function()
+            if character and character:FindFirstChild("HumanoidRootPart") then
+               box.Position = character.HumanoidRootPart.Position
+            end
+         end)
+
+         -- Store the connection in the table to disconnect later
+         connections[player] = connection
+      end
+   end)
+end)
+
+-- Clean up when the player leaves the game
+game.Players.PlayerRemoving:Connect(function(player)
+   local box = boxes[player]
+   if box then
+      box:Destroy()  -- Remove the blue box when the player leaves
+      boxes[player] = nil  -- Clean up the reference
+   end
+
+   local connection = connections[player]
+   if connection then
+      connection:Disconnect()  -- Disconnect the update connection when the player leaves
+      connections[player] = nil  -- Clean up the reference
+   end
+end)
+
+local sodaBoxes = {}  -- Table to store the soda boxes
+local updateConnections = {}  -- Table to store the connections for updating the box positions
+
+local toggle6 = Tab:CreateToggle({
+    Name = "SodaESP",  -- Name of the toggle
+    CurrentValue = false,  -- Initial value of the toggle (off)
+    Flag = "ESP",  -- A unique flag for the toggle
+    Callback = function(Value)
+        -- When the toggle is enabled
+        if Value then
+            -- Iterate through all sodas in the game
+            local soda = game.Workspace:WaitForChild("Terrain"):WaitForChild("OrbTemplate"):WaitForChild("Body")
+            
+            if soda and not sodaBoxes[soda] then
+                -- Create a box around the soda if it doesn't already have one
+                local box = Instance.new("Part")
+                box.Size = Vector3.new(5, 5, 5)  -- Size of the box, adjust based on your soda's size
+                box.Position = soda.Position  -- Position the box around the soda
+                box.Anchored = true
+                box.CanCollide = false
+                box.BrickColor = BrickColor.White()  -- White box color
+                box.Transparency = 0.5  -- Slightly transparent
+                box.Parent = game.Workspace
+
+                -- Store the box in the table
+                sodaBoxes[soda] = box
+
+                -- Update the box position every frame to follow the soda
+                local connection
+                connection = game:GetService("RunService").Heartbeat:Connect(function()
+                    if soda and soda.Parent then
+                        box.Position = soda.Position
+                    end
+                end)
+
+                -- Store the connection to disconnect later if needed
+                updateConnections[soda] = connection
+            end
+        else
+            -- When the toggle is turned off, remove all soda boxes and disconnect the update connections
+            for soda, box in pairs(sodaBoxes) do
+                if box then
+                    box:Destroy()  -- Remove the white box
+                end
+            end
+            -- Clear the sodaBoxes table
+            sodaBoxes = {}
+
+            -- Disconnect all update connections
+            for _, connection in pairs(updateConnections) do
+                if connection then
+                    connection:Disconnect()  -- Disconnect the update connection
+                end
+            end
+            -- Clear the updateConnections table
+            updateConnections = {}
+        end
+    end,
+})
+
+local Tab = Window:CreateTab("🤖Automatic", 7485051733)
+
+local autosnipe = Tab:CreateSection("snipe")
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+local currentlyHighlightedPlayer = nil
+local mouseClickConnection = nil
+local teleportLoopConnection = nil
+
+local baseplateName = "Baseplate"  -- Name of the baseplate part
+local teleportActive = false  -- Track if teleport is running
+local teleportDuration = 0.1  -- Set to a very short duration for near-instant teleport
+local initialDelay = 0.1  -- Short delay before teleporting
+local additionalWaitTime = 0.05  -- Short additional wait time before teleporting back
+
+local toggle6 = Tab:CreateToggle({
+    Name = "Teleport kill",
+    CurrentValue = false,
+    Flag = "teleport",
+    Callback = function(Value)
+        if Value then  
+            -- Function to get clicked player
+            local function getClickedPlayer()
+                local mouse = localPlayer:GetMouse()
+                local target = mouse.Target
+                if target and target.Parent then
+                    local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+                    if targetPlayer and targetPlayer ~= localPlayer then
+                        return targetPlayer
+                    end
+                end
+                return nil
+            end
+
+            -- Function to highlight player
+            local function highlightPlayer(player)
+                if not player or not player.Character then return end
+
+                -- Remove previous highlight
+                if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                    for _, part in ipairs(currentlyHighlightedPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            local highlight = part:FindFirstChild("PlayerHighlight")
+                            if highlight then
+                                highlight:Destroy()
+                            end
+                        end
+                    end
+                end
+
+                -- Add orange highlight
+                for _, part in ipairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        local selectionBox = Instance.new("SelectionBox")
+                        selectionBox.Adornee = part
+                        selectionBox.Color3 = Color3.new(1, 0.5, 0) -- Orange
+                        selectionBox.LineThickness = 0.05
+                        selectionBox.Name = "PlayerHighlight"
+                        selectionBox.Parent = part
+                    end
+                end
+
+                currentlyHighlightedPlayer = player
+            end
+
+            -- Check if player is on baseplate
+            local function isPlayerOnBaseplate(player)
+                if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrp = player.Character.HumanoidRootPart
+                    local ray = Ray.new(hrp.Position, Vector3.new(0, -5, 0))
+                    local hit, _ = workspace:FindPartOnRay(ray, player.Character)
+
+                    if hit and hit.Name == baseplateName then
+                        return true
+                    end
+                end
+                return false
+            end
+
+            -- Function to teleport smoothly to the target player's position (near-instant)
+            local function smoothTeleportToPlayer(targetHRP)
+                local character = localPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local localHRP = character.HumanoidRootPart
+
+                    -- Create a tween with an extremely short duration to simulate near-instant teleport
+                    local tweenInfo = TweenInfo.new(teleportDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+                    local goal = {CFrame = targetHRP.CFrame * CFrame.new(0, 1, 0)}  -- Adjust position slightly above the target
+                    local tween = TweenService:Create(localHRP, tweenInfo, goal)
+
+                    -- Play the tween
+                    tween:Play()
+                    tween.Completed:Wait()  -- Wait for the tween to finish
+                end
+            end
+
+            -- Function to teleport smoothly back to the terrain position (near-instant)
+            local function smoothTeleportBackToTerrain()
+                local terrain = Workspace:FindFirstChild("Terrain")
+                if terrain then
+                    -- Get a position above the terrain (to avoid ground penetration)
+                    local terrainPosition = terrain.Position + Vector3.new(0, 10, 0)
+                    local character = localPlayer.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        local targetHRP = character.HumanoidRootPart
+
+                        -- Create a tween with an extremely short duration to simulate near-instant teleport
+                        local tweenInfo = TweenInfo.new(teleportDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+                        local goal = {CFrame = CFrame.new(terrainPosition)}
+                        local tween = TweenService:Create(targetHRP, tweenInfo, goal)
+
+                        -- Play the tween
+                        tween:Play()
+                        tween.Completed:Wait()  -- Wait for the tween to finish
+                    end
+                end
+            end
+
+            -- Teleport function that locks onto the target
+            local function startTeleportLoop()
+                if teleportLoopConnection then
+                    teleportLoopConnection:Disconnect()
+                end
+                
+                teleportLoopConnection = RunService.Heartbeat:Connect(function()
+                    if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                        local targetCharacter = currentlyHighlightedPlayer.Character
+                        local localCharacter = localPlayer.Character
+                        if targetCharacter:FindFirstChild("HumanoidRootPart") and localCharacter and localCharacter:FindFirstChild("HumanoidRootPart") then
+                            local targetHRP = targetCharacter.HumanoidRootPart
+                            local localHRP = localCharacter.HumanoidRootPart
+
+                            local distance = (localHRP.Position - targetHRP.Position).Magnitude
+
+                            -- Trigger teleport when 30 studs away and on baseplate
+                            if distance <= 30 and isPlayerOnBaseplate(currentlyHighlightedPlayer) then
+                                if targetHRP.Parent:FindFirstChild("Humanoid") and targetHRP.Parent.Humanoid.Health > 0 then
+                                    teleportActive = true
+                                    
+                                    -- Phase 1: Wait for 0.1 seconds before teleporting
+                                    wait(initialDelay)
+                                    
+                                    -- Phase 2: Teleport smoothly to the target player's position
+                                    smoothTeleportToPlayer(targetHRP)
+                                    
+                                    -- Start the timer for 0.1 seconds (near-instant)
+                                    wait(teleportDuration)
+
+                                    -- Wait additional 0.05 seconds before teleporting back
+                                    wait(additionalWaitTime)
+                                    
+                                    -- Phase 3: After 0.1 seconds + 0.05 seconds, teleport back to terrain
+                                    smoothTeleportBackToTerrain()
+
+                                    -- Phase 4: After teleporting back, stop everything and unhighlight
+                                    currentlyHighlightedPlayer = nil
+                                    teleportActive = false
+                                  
+                                    -- Remove the highlight after teleportation
+                                    if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                                        for _, part in pairs(currentlyHighlightedPlayer.Character:GetChildren()) do
+                                            if part:IsA("BasePart") then
+                                                local highlight = part:FindFirstChild("PlayerHighlight")
+                                                if highlight then
+                                                    highlight:Destroy()
+                                                end
+                                            end
+                                        end
+                                    end
+                                  
+                                    -- Disconnect events for teleporting
+                                    if teleportLoopConnection then
+                                        teleportLoopConnection:Disconnect()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+
+            -- Mouse click event to highlight player
+            mouseClickConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    local tappedPlayer = getClickedPlayer()
+                    if tappedPlayer then
+                        highlightPlayer(tappedPlayer)
+                        startTeleportLoop()
+                    end
+                end
+            end)
+
+        else  -- If toggle is off, stop everything
+
+            -- Remove highlights
+            if currentlyHighlightedPlayer and currentlyHighlightedPlayer.Character then
+                for _, part in pairs(currentlyHighlightedPlayer.Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        local highlight = part:FindFirstChild("PlayerHighlight")
+                        if highlight then
+                            highlight:Destroy()
+                        end
+                    end
+                end
+            end
+
+            -- Reset variables
+            currentlyHighlightedPlayer = nil
+            teleportActive = false
+
+            -- Disconnect events
+            if mouseClickConnection then
+                mouseClickConnection:Disconnect()
+                mouseClickConnection = nil
+            end
+
+            if teleportLoopConnection then
+                teleportLoopConnection:Disconnect()
+                teleportLoopConnection = nil
+            end
+        end
+    end
+})
