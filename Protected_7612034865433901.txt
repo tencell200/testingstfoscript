@@ -1,3 +1,22 @@
+-- Lua script that validates the key passed to it
+local key = getgenv().key  -- This retrieves the key passed from the Discord bot
+
+-- List of valid keys
+local validKeys = {
+    ["Dpmy7WgnPPPLBdmk"] = true,
+    ["AnotherValidKey"] = true
+}
+
+-- Check if the key is valid
+if validKeys[key] then
+    print("✅ Access Granted! Key is valid.")
+    -- Your further script execution code here
+else
+    print("❌ Invalid Key!")
+end
+
+
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 if not Rayfield then
